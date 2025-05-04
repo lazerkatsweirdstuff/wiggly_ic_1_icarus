@@ -1,5 +1,3 @@
-// from https://github.com/projf/projf-explore/blob/8efd68404bdc9bcb1cdcb98d8658f91b7594146a/graphics/fpga-graphics/simple_display_timings_480p.sv
-
 // Project F: FPGA Graphics - Simple 640x480p60 Display Timings
 // (C)2021 Will Green, open source hardware released under the MIT License
 // Learn more at https://projectf.io
@@ -8,13 +6,13 @@
 `timescale 1ns / 1ps
 
 module simple_display_timings_480p (
-    input  wire logic clk_pix,   // pixel clock
-    input  wire logic rst,       // reset
-    output      logic [9:0] sx,  // horizontal screen position
-    output      logic [9:0] sy,  // vertical screen position
-    output      logic hsync,     // horizontal sync
-    output      logic vsync,     // vertical sync
-    output      logic de         // data enable (low in blanking interval)
+    input  wire clk_pix,           // pixel clock
+    input  wire rst,               // reset
+    output reg [9:0] sx,           // horizontal screen position
+    output reg [9:0] sy,           // vertical screen position
+    output reg hsync,              // horizontal sync
+    output reg vsync,              // vertical sync
+    output reg de                  // data enable (low in blanking interval)
     );
 
 `ifdef SMALL
@@ -41,23 +39,24 @@ module simple_display_timings_480p (
     parameter SCREEN = 524;           // last line on screen (after back porch)
 `endif
 
-    always_comb begin
+    always @(*) begin
         hsync = ~(sx >= HS_STA && sx < HS_END);  // invert: negative polarity
         vsync = ~(sy >= VS_STA && sy < VS_END);  // invert: negative polarity
         de = (sx <= HA_END && sy <= VA_END);
     end
 
     // calculate horizontal and vertical screen position
-    always_ff @(posedge clk_pix) begin
-        if (sx == LINE) begin  // last pixel on line?
-            sx <= 0;
-            sy <= (sy == SCREEN) ? 0 : sy + 1;  // last line on screen?
-        end else begin
-            sx <= sx + 1;
-        end
+    always @(posedge clk_pix or posedge rst) begin
         if (rst) begin
             sx <= 0;
             sy <= 0;
+        end else begin
+            if (sx == LINE) begin  // last pixel on line?
+                sx <= 0;
+                sy <= (sy == SCREEN) ? 0 : sy + 1;  // last line on screen?
+            end else begin
+                sx <= sx + 1;
+            end
         end
     end
 endmodule
