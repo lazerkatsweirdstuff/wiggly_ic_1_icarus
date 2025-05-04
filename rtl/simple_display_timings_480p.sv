@@ -60,3 +60,4 @@ module simple_display_timings_480p (
         end
     end
 endmodule
+ 
