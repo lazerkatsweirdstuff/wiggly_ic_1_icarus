@@ -1,19 +1,17 @@
-// just from https://www.google.com/books/edition/FPGA_Prototyping_by_SystemVerilog_Exampl/CR5eDwAAQBAJ?hl=en&gbpv=1&pg=PA414
-
 `default_nettype none
 `timescale 1ns / 1ps
 
 module ps2tx
    (
-    input logic       clk, reset,
-    input logic       wr_ps2, rx_idle,
-    input logic [7:0] din,
-    output logic      tx_idle, tx_done_tick,
+    input wire        clk, reset,
+    input wire        wr_ps2, rx_idle,
+    input wire [7:0]  din,
+    output reg        tx_idle, tx_done_tick,
 
     // was `inout tri ps2c, ps2d`
-    input logic       ps2c,
-    output logic      ps2c_out, ps2d_out,
-    output logic      tri_c, tri_d // HIGH when we're transmitting
+    input wire        ps2c,
+    output reg        ps2c_out, ps2d_out,
+    output wire       tri_c, tri_d // HIGH when we're transmitting
    );
 
    // fsm state type 
@@ -21,48 +19,46 @@ module ps2tx
 
    // declaration
    state_type state_reg, state_next;
-   logic [7:0] filter_reg;
-   logic [7:0] filter_next;
-   logic f_ps2c_reg;
-   logic f_ps2c_next;
-   logic [3:0] n_reg, n_next;
-   logic [8:0] b_reg, b_next;
-   logic [12:0] c_reg, c_next;
-   logic par, fall_edge;
-   // logic ps2c_out, ps2d_out;
-   // logic tri_c, tri_d;
+   reg [7:0] filter_reg;
+   reg [7:0] filter_next;
+   reg f_ps2c_reg;
+   reg f_ps2c_next;
+   reg [3:0] n_reg, n_next;
+   reg [8:0] b_reg, b_next;
+   reg [12:0] c_reg, c_next;
+   wire par, fall_edge;
 
    // body
    //*****************************************************************
    // filter and falling-edge tick generation for ps2c
    //*****************************************************************
-   always_ff @(posedge clk, posedge reset)
-   if (reset)
-      begin
-         filter_reg <= 0;
-         f_ps2c_reg <= 0;
+   always @(posedge clk or posedge reset) begin
+      if (reset) begin
+         filter_reg <= 8'b0;
+         f_ps2c_reg <= 1'b0;
       end
-   else
-      begin
+      else begin
          filter_reg <= filter_next;
          f_ps2c_reg <= f_ps2c_next;
       end
+   end
 
    assign filter_next = {ps2c, filter_reg[7:1]};
-   assign f_ps2c_next = (filter_reg==8'b11111111) ? 1'b1 :
-                        (filter_reg==8'b00000000) ? 1'b0 :
+   assign f_ps2c_next = (filter_reg == 8'b11111111) ? 1'b1 :
+                        (filter_reg == 8'b00000000) ? 1'b0 :
                          f_ps2c_reg;
    assign fall_edge = f_ps2c_reg & ~f_ps2c_next;
+
    //*****************************************************************
    // FSMD
    //*****************************************************************
    // state & data registers
-   always_ff @(posedge clk, posedge reset)
+   always @(posedge clk or posedge reset) begin
       if (reset) begin
          state_reg <= idle;
-         c_reg <= 0;
-         n_reg <= 0;
-         b_reg <= 0;
+         c_reg <= 13'b0;
+         n_reg <= 4'b0;
+         b_reg <= 9'b0;
       end
       else begin
          state_reg <= state_next;
@@ -70,11 +66,13 @@ module ps2tx
          n_reg <= n_next;
          b_reg <= b_next;
       end
+   end
+
    // odd parity bit
    assign par = ~(^din);
+
    // next-state logic
-   always_comb
-   begin
+   always @(*) begin
       state_next = state_reg;
       c_next = c_reg;
       n_next = n_reg;
@@ -85,6 +83,7 @@ module ps2tx
       tri_c = 1'b0;
       tri_d = 1'b0;
       tx_idle = 1'b0;
+
       case (state_reg)
          idle: begin
             tx_idle = 1'b1;
@@ -94,21 +93,22 @@ module ps2tx
                state_next = waitr;
             end
          end
-         waitr:
+         waitr: begin
             if (rx_idle)
                state_next = rts;         
+         end
          rts: begin  // request to send
             ps2c_out = 1'b0;
             tri_c = 1'b1;
             c_next = c_reg - 1;
-            if (c_reg==0)
+            if (c_reg == 0)
                state_next = start;
          end
          start: begin // assert start bit
             ps2d_out = 1'b0;
             tri_d = 1'b1;
-            if (fall_edge)
-            begin n_next = 4'h8;
+            if (fall_edge) begin
+               n_next = 4'h8;
                state_next = data;
             end
          end
@@ -123,14 +123,17 @@ module ps2tx
                   n_next = n_reg - 1;
             end
          end
-         default:   // assume floating high for ps2d
+         default: begin   // assume floating high for ps2d
             if (fall_edge) begin
-              state_next = idle;
-              tx_done_tick = 1'b1;
-           end
+               state_next = idle;
+               tx_done_tick = 1'b1;
+            end
+         end
       endcase
    end
+
    // tristate buffers
-   // assign ps2c = (tri_c) ? ps2c_out : 1'bz;
-   // assign ps2d = (tri_d) ? ps2d_out : 1'bz;
+   assign tri_c = (ps2c_out) ? 1'b1 : 1'bz;
+   assign tri_d = (ps2d_out) ? 1'b1 : 1'bz;
+
 endmodule // ps2tx
